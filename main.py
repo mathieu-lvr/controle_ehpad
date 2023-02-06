@@ -22,13 +22,11 @@ def checkIfPathExists(file):
         print('Ancien fichier écrasé')
         
 
-def _convertXlsxToCsv(inputExcelFilePath):
+def _convertXlsxToCsv(inputExcelFilePath, outputCsvFilePath):
     try:
     # Reading an excel file
     #   sheetname = getSheetName()
         excelFile = pd.read_excel(inputExcelFilePath, header=0)
-    # Create the csv path
-        outputCsvFilePath = inputExcelFilePath[:-5]+".csv"
         checkIfPathExists(outputCsvFilePath)
     # Converting excel file into CSV file
         excelFile.to_csv(outputCsvFilePath, index = None, header=True, sep=';', encoding='UTF-8')
@@ -42,24 +40,33 @@ def _convertXlsxToCsv(inputExcelFilePath):
 def _csvReader(csvFilePath):
     df = pd.read_csv(csvFilePath, sep= ';', encoding='UTF-8',low_memory=False)
     return df
-#Checker utf8 
+
 #Pousser le csv sans mettre en dataframe
 
 
 
 ### Partie nettoyage des données
 
+from unidecode import unidecode
 import re
 
+def _cleanTxt(text):
+    try:
+        text = unicode(text.lower(), 'utf-8')
+    except (TypeError, NameError): # unicode is a default on python 3 
+        pass
+    text = unidecode(text.lower())
+    text = text.encode('ascii', 'ignore')
+    text = text.decode("utf-8")
+
+    text = re.sub('[ ]+', '_', text)
+    text = re.sub('[^0-9a-zA-Z_-]', '', text) 
+    return str(text)
 
 def _cleanSrcData(df):
 # Enlever caractères spéciaux, accents, espace ( _ ) ,
+    df.columns = [ _cleanTxt(i) for i in df.columns.values.tolist()]
     return df
-
-
-csvFilePath = 'C:/Users/mathieu.olivier/Documents/Helios/Script_V2/input/export-tdbesms-2020-region_agrege.csv'
-
-df = pd.read_csv(csvFilePath, sep=';', encoding='latin-1')
 
 
 
@@ -67,6 +74,7 @@ df = pd.read_csv(csvFilePath, sep=';', encoding='latin-1')
 ### Partie Création de la DB et ajout des tables
 
 import sqlite3
+import shutil
 
 dbname = 'controle_ehpad'
 
@@ -95,26 +103,40 @@ def _executeTransform():
     #Appeler les requetes sql
     return 
 
+# Go in all the input folders and store a csv clean version in to_csv
+allFolders = listdir('input')
+allFolders.remove('to_csv')
+
+for folderName in allFolders:
+    folderPath = 'input/{}'.format(folderName)
+    allFiles =  listdir(folderPath)
+    for inputFileName in allFiles:
+        inputFilePath = folderPath+'/'+inputFileName
+        outputFilePath = 'input/to_csv/'+inputFileName.split('.')[0]+'.csv'
+        if inputFileName.split('.')[-1].lower()=='xlsx':
+            _convertXlsxToCsv(inputFilePath,outputFilePath)
+        elif inputFileName.split('.')[-1].lower()=='csv':
+            shutil.copyfile(inputFilePath,outputFilePath)
+
+allCsv = listdir('input/to_csv')
 
 
 
-allSources = listdir('input/sources')
-allExcelSources = [path for path in allSources if path.split('.')[-1].lower()=='xlsx']
-
-for inputExcelFilePath in allExcelSources:
+for inputCsvFilePath in allCsv:
     _importSrcData(
         _cleanSrcData(
-            _csvReader(
-                _convertXlsxToCsv('input/sources/'+inputExcelFilePath)
-            )
-        ),
-        inputExcelFilePath.split('/')[-1].split('.')[0]
+            _csvReader( 'input/to_csv/'+inputCsvFilePath
+                       )
+            ),
+        inputCsvFilePath.split('/')[-1].split('.')[0]
         )
     
 conn.close()
 
 #%% Update section
 #Pour Update une table à partir d'un fichier
+# Ca ne marche pas pour l'instant 
+# En pause car pas nécessaire
 
 def _updateTable(dbname, table_name, excelFilePath):
     try:
@@ -153,10 +175,3 @@ Sources:
     - ref
 '''
 
-#%% Unicode test
-
-from unidecode import unidecode
-
-print(unidecode('élé'))
-
-print(unidecode('kožušček'))
